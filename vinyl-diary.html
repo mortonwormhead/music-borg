@@ -229,6 +229,16 @@
     font-weight:700;font-size:13px;z-index:99;display:none;box-shadow:5px 5px 0 var(--pink);
   }
   .badge-connected{display:inline-block;background:#0a8a3f;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border:2px solid var(--ink);margin-left:8px;}
+  #nowPlayingBar{
+    position:relative;z-index:2;background:var(--ink);color:#fff;
+    text-align:center;font-size:12px;font-weight:700;padding:8px 14px;
+    border-bottom:var(--line) solid var(--ink);letter-spacing:.3px;
+  }
+  .np-dot{
+    display:inline-block;width:8px;height:8px;border-radius:50%;
+    background:var(--red);margin-right:6px;animation:np-pulse 1.4s infinite;
+  }
+  @keyframes np-pulse{ 0%,100%{opacity:1;} 50%{opacity:.3;} }
 
   .swatch-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:6px;}
   .swatch{
@@ -287,8 +297,14 @@
   <div class="tab" data-page="diary">DIARY</div>
   <div class="tab" data-page="wall">WARHOL WALL</div>
   <div class="tab" data-page="roulette">ROULETTE</div>
+  <div class="tab" data-page="live">LIVE SESSION</div>
   <div class="tab" data-page="customize">CUSTOMIZE</div>
 </nav>
+
+<div id="nowPlayingBar" style="display:none;">
+  <span class="np-dot"></span> NOW PLAYING: <span id="npText"></span>
+  <button class="btn small pink" id="npLogBtn" style="margin-left:10px;">+ Log this album</button>
+</div>
 
 <main>
 
@@ -306,6 +322,10 @@
           <label for="lfApiKey">Last.fm API key</label>
           <input type="password" id="lfApiKey" placeholder="paste your key">
         </div>
+        <div>
+          <label for="lfApiSecret">API secret (optional, for scrobbling)</label>
+          <input type="password" id="lfApiSecret" placeholder="paste your shared secret">
+        </div>
         <div style="flex:0 0 auto;">
           <button class="btn pink" id="btnConnect">Connect &amp; Import</button>
         </div>
@@ -315,8 +335,28 @@
     </div>
 
     <div class="block">
+      <h2>Connect Spotify <span id="spotifyBadge"></span></h2>
+      <p class="sub">Optional: use Spotify's catalog for artwork, tracklists, and genres instead of iTunes — often faster and more complete. Create a free app at the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">Spotify Developer Dashboard</a> to get a Client ID and Client Secret (no redirect URI needed for this). Once connected, Spotify is used automatically for searches and new albums; iTunes is still the fallback if anything fails.</p>
+      <div class="row">
+        <div>
+          <label for="spotifyClientId">Client ID</label>
+          <input type="text" id="spotifyClientId" placeholder="paste your Client ID">
+        </div>
+        <div>
+          <label for="spotifyClientSecret">Client Secret</label>
+          <input type="password" id="spotifyClientSecret" placeholder="paste your Client Secret">
+        </div>
+        <div style="flex:0 0 auto;">
+          <button class="btn pink" id="btnSpotifyConnect">Connect Spotify</button>
+        </div>
+      </div>
+      <div id="spotifyStatus" class="status-msg"></div>
+      <button class="btn ghost small" id="btnSpotifyForget">Forget Spotify credentials</button>
+    </div>
+
+    <div class="block">
       <h2>Add an album by hand</h2>
-      <p class="sub">No Last.fm history for it, or want to log something manually? Search for it here — artwork and tracklist come from the iTunes catalog, no key required. Try "album by artist" (e.g. "Automatic for the People by R.E.M.") for the most precise match.</p>
+      <p class="sub">No Last.fm history for it, or want to log something manually? Search for it here — artwork and tracklist come from Spotify once connected above, or the iTunes catalog otherwise. Try "album by artist" (e.g. "Automatic for the People by R.E.M.") for the most precise match.</p>
       <div class="row">
         <div>
           <label for="manualQuery">Artist and album</label>
@@ -511,6 +551,67 @@
     </div>
   </section>
 
+  <!-- ============ LIVE SESSION PAGE ============ -->
+  <section id="page-live" class="page">
+    <div class="block">
+      <h2>Your Spotify stats <span id="spotifyAcctBadge"></span></h2>
+      <p class="sub">Log in with your Spotify account (different from the app connection above) to see your top artists, top tracks, recently played, and what's playing right now. This needs the page hosted at a stable URL — add that exact URL as a Redirect URI in your <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">Spotify app settings</a> first. It won't work opened as a local file straight from disk.</p>
+      <div class="row" style="align-items:center;">
+        <div style="flex:1 1 260px;">
+          <label>Redirect URI to register in your Spotify app</label>
+          <input type="text" id="spotifyRedirectDisplay" readonly style="margin-bottom:0;">
+        </div>
+        <div style="flex:0 0 auto;">
+          <button class="btn pink" id="btnSpotifyLogin">Log in with Spotify</button>
+        </div>
+        <div style="flex:0 0 auto;">
+          <button class="btn ghost small" id="btnSpotifyLogout">Log out</button>
+        </div>
+      </div>
+      <div id="spotifyAcctStatus" class="status-msg"></div>
+
+      <div id="nowPlayingBanner" style="display:none;margin-top:6px;"></div>
+
+      <div class="row" style="margin-top:10px;">
+        <div style="flex:0 0 auto;">
+          <label for="topRange">Time range</label>
+          <select id="topRange" style="width:170px;">
+            <option value="short_term">Last 4 weeks</option>
+            <option value="medium_term" selected>Last 6 months</option>
+            <option value="long_term">All time</option>
+          </select>
+        </div>
+      </div>
+      <h3 style="font-size:15px;margin:14px 0 8px;">Top artists</h3>
+      <div id="topArtistsGrid" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(120px,1fr));"></div>
+      <h3 style="font-size:15px;margin:18px 0 8px;">Top tracks</h3>
+      <div id="topTracksList"></div>
+      <h3 style="font-size:15px;margin:18px 0 8px;">Recently played</h3>
+      <div id="recentlyPlayedList"></div>
+    </div>
+
+    <div class="block">
+      <h2>Live scrobbling <span id="scrobbleBadge"></span></h2>
+      <p class="sub">Bridges your Spotify listening straight to Last.fm: while this tab is open, it checks what you're playing every 20 seconds, updates "now playing" on Last.fm immediately, and submits a proper scrobble once a track has played long enough to count. Requires both your Spotify login above and Last.fm's API secret entered on the Connect page.</p>
+      <div class="row">
+        <div style="flex:0 0 auto;">
+          <button class="btn cyan" id="btnLastfmAuthStart">1. Authorize on Last.fm</button>
+        </div>
+        <div style="flex:0 0 auto;">
+          <button class="btn cyan" id="btnLastfmAuthFinish">2. Finish setup</button>
+        </div>
+        <div style="flex:0 0 auto;">
+          <button class="btn ghost small" id="btnLastfmScrobbleForget">Disconnect scrobbling</button>
+        </div>
+      </div>
+      <div id="scrobbleStatus" class="status-msg"></div>
+      <label class="toggle-item" style="margin-top:10px;">
+        <input type="checkbox" id="toggleAutoScrobble"> Auto-scrobble what I play on Spotify to Last.fm
+      </label>
+      <div id="scrobbleLog" style="margin-top:10px;font-size:12px;font-weight:600;opacity:.75;"></div>
+    </div>
+  </section>
+
   <!-- ============ CUSTOMIZE PAGE ============ -->
   <section id="page-customize" class="page">
     <div class="block">
@@ -611,7 +712,13 @@
   window.__vdFallback = FALLBACK_ART; // referenced by inline onerror handlers below
 
   const state = {
-    settings: { username:"", apiKey:"" },
+    settings: { username:"", apiKey:"", apiSecret:"" },
+    spotify: { clientId:"", clientSecret:"", accessToken:null, tokenExpiry:0 },
+    spotifyUser: { accessToken:null, refreshToken:null, tokenExpiry:0 },
+    lastfmSession: null, // { name, key }
+    lastfmAuthToken: null,
+    autoScrobble: false,
+    nowPlaying: null, // { id, name, artist, album, durationMs, startedAt, scrobbled }
     albums: [],
     sheetSort: { key:"dateUpdated", dir:"desc" },
     currentEditId: null,
@@ -666,6 +773,59 @@
 
   function esc(s){
     return String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  // ---- MD5 (RFC 1321) — needed to sign Last.fm's authenticated write calls ----
+  function md5(input){
+    function rotl(x,c){ return (x<<c)|(x>>>(32-c)); }
+    function toBytesUtf8(str){ return new TextEncoder().encode(str); }
+    const K = new Uint32Array([
+      0xd76aa478,0xe8c7b756,0x242070db,0xc1bdceee,0xf57c0faf,0x4787c62a,0xa8304613,0xfd469501,
+      0x698098d8,0x8b44f7af,0xffff5bb1,0x895cd7be,0x6b901122,0xfd987193,0xa679438e,0x49b40821,
+      0xf61e2562,0xc040b340,0x265e5a51,0xe9b6c7aa,0xd62f105d,0x02441453,0xd8a1e681,0xe7d3fbc8,
+      0x21e1cde6,0xc33707d6,0xf4d50d87,0x455a14ed,0xa9e3e905,0xfcefa3f8,0x676f02d9,0x8d2a4c8a,
+      0xfffa3942,0x8771f681,0x6d9d6122,0xfde5380c,0xa4beea44,0x4bdecfa9,0xf6bb4b60,0xbebfbc70,
+      0x289b7ec6,0xeaa127fa,0xd4ef3085,0x04881d05,0xd9d4d039,0xe6db99e5,0x1fa27cf8,0xc4ac5665,
+      0xf4292244,0x432aff97,0xab9423a7,0xfc93a039,0x655b59c3,0x8f0ccc92,0xffeff47d,0x85845dd1,
+      0x6fa87e4f,0xfe2ce6e0,0xa3014314,0x4e0811a1,0xf7537e82,0xbd3af235,0x2ad7d2bb,0xeb86d391
+    ]);
+    const S = [7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,
+               5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,
+               4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,
+               6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
+    let msg = toBytesUtf8(input);
+    const origLenBits = msg.length * 8;
+    let withOne = new Uint8Array(msg.length + 1);
+    withOne.set(msg); withOne[msg.length] = 0x80;
+    let totalLen = Math.ceil((withOne.length + 8) / 64) * 64;
+    let padded = new Uint8Array(totalLen);
+    padded.set(withOne);
+    const dv = new DataView(padded.buffer);
+    dv.setUint32(totalLen - 8, origLenBits >>> 0, true);
+    dv.setUint32(totalLen - 4, Math.floor(origLenBits / 4294967296), true);
+
+    let a0=0x67452301, b0=0xefcdab89, c0=0x98badcfe, d0=0x10325476;
+    for(let chunk = 0; chunk < totalLen; chunk += 64){
+      const M = new Uint32Array(16);
+      for(let j=0;j<16;j++) M[j] = dv.getUint32(chunk + j*4, true);
+      let A=a0,B=b0,C=c0,D=d0;
+      for(let i=0;i<64;i++){
+        let F,g;
+        if(i<16){ F=(B&C)|(~B&D); g=i; }
+        else if(i<32){ F=(D&B)|(~D&C); g=(5*i+1)%16; }
+        else if(i<48){ F=B^C^D; g=(3*i+5)%16; }
+        else { F=C^(B|~D); g=(7*i)%16; }
+        F = (F + A + K[i] + M[g]) >>> 0;
+        A = D; D = C; C = B;
+        B = (B + rotl(F, S[i])) >>> 0;
+      }
+      a0 = (a0+A)>>>0; b0=(b0+B)>>>0; c0=(c0+C)>>>0; d0=(d0+D)>>>0;
+    }
+    function toHexLE(n){
+      let bytes = [n&0xff,(n>>>8)&0xff,(n>>>16)&0xff,(n>>>24)&0xff];
+      return bytes.map(b=>b.toString(16).padStart(2,"0")).join("");
+    }
+    return toHexLE(a0)+toHexLE(b0)+toHexLE(c0)+toHexLE(d0);
   }
 
   function showToast(msg, isError){
@@ -751,20 +911,115 @@
   async function loadSettings(){
     const raw = await storageGet("settings");
     if(raw){
-      try{ state.settings = JSON.parse(raw); }catch(e){}
+      try{ state.settings = Object.assign({ username:"", apiKey:"", apiSecret:"" }, JSON.parse(raw)); }catch(e){}
     }
     $("#lfUsername").value = state.settings.username || "";
     $("#lfApiKey").value = state.settings.apiKey || "";
+    $("#lfApiSecret").value = state.settings.apiSecret || "";
     updateConnectedBadge();
   }
-  async function saveSettings(username, apiKey){
-    state.settings = { username, apiKey };
+  async function saveSettings(username, apiKey, apiSecret){
+    state.settings = { username, apiKey, apiSecret: apiSecret != null ? apiSecret : state.settings.apiSecret };
     await storageSet("settings", JSON.stringify(state.settings));
     updateConnectedBadge();
   }
   function updateConnectedBadge(){
     $("#connectedBadge").innerHTML = state.settings.username && state.settings.apiKey
       ? '<span class="badge-connected">CONNECTED AS ' + esc(state.settings.username.toUpperCase()) + '</span>' : "";
+  }
+
+  async function loadSpotifySettings(){
+    const raw = await storageGet("spotify");
+    if(raw){
+      try{
+        const saved = JSON.parse(raw);
+        state.spotify.clientId = saved.clientId || "";
+        state.spotify.clientSecret = saved.clientSecret || "";
+      }catch(e){}
+    }
+    $("#spotifyClientId").value = state.spotify.clientId;
+    $("#spotifyClientSecret").value = state.spotify.clientSecret;
+    updateSpotifyBadge();
+  }
+  async function saveSpotifySettings(clientId, clientSecret){
+    state.spotify.clientId = clientId;
+    state.spotify.clientSecret = clientSecret;
+    await storageSet("spotify", JSON.stringify({ clientId, clientSecret }));
+    updateSpotifyBadge();
+  }
+  function updateSpotifyBadge(){
+    $("#spotifyBadge").innerHTML = (state.spotify.clientId && state.spotify.clientSecret && state.spotify.accessToken)
+      ? '<span class="badge-connected">SPOTIFY CONNECTED</span>' : "";
+  }
+
+  async function loadLastfmSession(){
+    const raw = await storageGet("lastfm_session");
+    if(raw){
+      try{ state.lastfmSession = JSON.parse(raw); }catch(e){}
+    }
+    updateScrobbleBadge();
+  }
+  function updateScrobbleBadge(){
+    $("#scrobbleBadge").innerHTML = state.lastfmSession
+      ? '<span class="badge-connected">SCROBBLING AS ' + esc((state.lastfmSession.name||"").toUpperCase()) + '</span>' : "";
+  }
+
+  async function loadSpotifyUser(){
+    const raw = await storageGet("spotify_user");
+    if(raw){
+      try{ state.spotifyUser = Object.assign({ accessToken:null, refreshToken:null, tokenExpiry:0 }, JSON.parse(raw)); }catch(e){}
+    }
+    renderSpotifyAcctBadge();
+  }
+
+  async function startLastfmAuth(){
+    const statusEl = $("#scrobbleStatus");
+    statusEl.className = "status-msg";
+    if(!state.settings.apiKey || !state.settings.apiSecret){
+      statusEl.textContent = "Enter your Last.fm API key and secret on the Connect page first.";
+      statusEl.classList.add("err");
+      return;
+    }
+    try{
+      const token = await lastfmAuthGetToken();
+      state.lastfmAuthToken = token;
+      window.open(lastfmAuthorizeUrl(token), "_blank", "noopener");
+      statusEl.textContent = "Approve access in the new tab, then come back and click \"Finish setup\".";
+      statusEl.classList.add("ok");
+    }catch(e){
+      statusEl.textContent = "Couldn't start authorization: " + e.message;
+      statusEl.classList.add("err");
+    }
+  }
+
+  async function finishLastfmAuth(){
+    const statusEl = $("#scrobbleStatus");
+    statusEl.className = "status-msg";
+    if(!state.lastfmAuthToken){
+      statusEl.textContent = "Click \"Authorize on Last.fm\" first.";
+      statusEl.classList.add("err");
+      return;
+    }
+    try{
+      const session = await lastfmAuthGetSession(state.lastfmAuthToken);
+      state.lastfmSession = session;
+      await storageSet("lastfm_session", JSON.stringify(session));
+      updateScrobbleBadge();
+      statusEl.textContent = "Scrobbling enabled as " + session.name + ".";
+      statusEl.classList.add("ok");
+    }catch(e){
+      statusEl.textContent = "Couldn't finish setup — did you approve access in the other tab? (" + e.message + ")";
+      statusEl.classList.add("err");
+    }
+  }
+
+  async function forgetScrobbling(){
+    state.lastfmSession = null;
+    state.lastfmAuthToken = null;
+    await storageDelete("lastfm_session");
+    updateScrobbleBadge();
+    $("#scrobbleStatus").textContent = "";
+    showToast("Scrobbling disconnected.");
   }
 
   async function loadCustomization(){
@@ -872,6 +1127,379 @@
     return data;
   }
 
+  // ---- Last.fm signed write API (scrobbling) ----
+  function lastfmSign(params){
+    const keys = Object.keys(params).sort();
+    let str = "";
+    keys.forEach(k => { str += k + params[k]; });
+    str += state.settings.apiSecret;
+    return md5(str);
+  }
+
+  async function lastfmSignedGet(params){
+    const sig = lastfmSign(params);
+    const url = new URL(LASTFM_ROOT);
+    Object.keys(params).forEach(k => url.searchParams.set(k, params[k]));
+    url.searchParams.set("api_sig", sig);
+    url.searchParams.set("format", "json");
+    const res = await fetch(url.toString());
+    const data = await res.json();
+    if(data.error) throw new Error(data.message || "Last.fm request failed");
+    return data;
+  }
+
+  async function lastfmSignedPost(params){
+    const sig = lastfmSign(params);
+    const body = new URLSearchParams(Object.assign({}, params, { api_sig: sig, format: "json" }));
+    const res = await fetch(LASTFM_ROOT, { method: "POST", body });
+    const data = await res.json();
+    if(data.error) throw new Error(data.message || "Last.fm request failed");
+    return data;
+  }
+
+  async function lastfmAuthGetToken(){
+    const data = await lastfmSignedGet({ method: "auth.gettoken", api_key: state.settings.apiKey });
+    return data.token;
+  }
+
+  function lastfmAuthorizeUrl(token){
+    return "https://www.last.fm/api/auth/?api_key=" + encodeURIComponent(state.settings.apiKey) + "&token=" + encodeURIComponent(token);
+  }
+
+  async function lastfmAuthGetSession(token){
+    const data = await lastfmSignedGet({ method: "auth.getsession", api_key: state.settings.apiKey, token });
+    return data.session; // { name, key, subscriber }
+  }
+
+  async function lastfmUpdateNowPlaying(artist, track, album){
+    const params = { method: "track.updateNowPlaying", api_key: state.settings.apiKey, sk: state.lastfmSession.key, artist, track };
+    if(album) params.album = album;
+    return lastfmSignedPost(params);
+  }
+
+  async function lastfmScrobble(artist, track, album, timestampSeconds){
+    const params = { method: "track.scrobble", api_key: state.settings.apiKey, sk: state.lastfmSession.key, artist, track, timestamp: String(timestampSeconds) };
+    if(album) params.album = album;
+    return lastfmSignedPost(params);
+  }
+
+  // ---------------- SPOTIFY ----------------
+  function spotifyConfigured(){
+    return !!(state.spotify.clientId && state.spotify.clientSecret);
+  }
+
+  async function spotifyGetToken(){
+    if(!spotifyConfigured()) throw new Error("Spotify is not connected");
+    if(state.spotify.accessToken && Date.now() < state.spotify.tokenExpiry - 30000){
+      return state.spotify.accessToken;
+    }
+    const res = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": "Basic " + btoa(state.spotify.clientId + ":" + state.spotify.clientSecret)
+      },
+      body: "grant_type=client_credentials"
+    });
+    const data = await res.json();
+    if(!res.ok || !data.access_token) throw new Error(data.error_description || "Spotify authentication failed");
+    state.spotify.accessToken = data.access_token;
+    state.spotify.tokenExpiry = Date.now() + (data.expires_in || 3600) * 1000;
+    return state.spotify.accessToken;
+  }
+
+  async function spotifyApi(path){
+    const token = await spotifyGetToken();
+    const res = await fetch("https://api.spotify.com/v1" + path, {
+      headers: { "Authorization": "Bearer " + token }
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error((data.error && data.error.message) || "Spotify request failed");
+    return data;
+  }
+
+  async function connectSpotify(){
+    const clientId = $("#spotifyClientId").value.trim();
+    const clientSecret = $("#spotifyClientSecret").value.trim();
+    const statusEl = $("#spotifyStatus");
+    statusEl.className = "status-msg";
+    if(!clientId || !clientSecret){
+      statusEl.textContent = "Enter both the Client ID and Client Secret.";
+      statusEl.classList.add("err");
+      return;
+    }
+    await saveSpotifySettings(clientId, clientSecret);
+    statusEl.textContent = "Connecting...";
+    try{
+      await spotifyGetToken();
+      statusEl.textContent = "Spotify connected. It'll be used for metadata from now on.";
+      statusEl.classList.add("ok");
+      updateSpotifyBadge();
+    }catch(err){
+      statusEl.textContent = "Couldn't connect — check your Client ID and Secret (" + err.message + ").";
+      statusEl.classList.add("err");
+    }
+  }
+
+  // ---- Spotify user login (Authorization Code + PKCE) — needed for personal
+  // listening stats and "now playing", which the app-only client-credentials
+  // token above cannot access. ----
+  function spotifyRedirectUri(){
+    return window.location.origin + window.location.pathname;
+  }
+  function randomVerifier(){
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let out = "";
+    const arr = new Uint8Array(64);
+    (window.crypto || {}).getRandomValues ? crypto.getRandomValues(arr) : arr.forEach((_,i)=>arr[i]=Math.floor(Math.random()*256));
+    for(let i=0;i<64;i++) out += chars[arr[i] % chars.length];
+    return out;
+  }
+  function base64url(bytes){
+    let str = "";
+    bytes.forEach(b => str += String.fromCharCode(b));
+    return btoa(str).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+  }
+  async function pkceChallenge(verifier){
+    if(window.crypto && window.crypto.subtle){
+      try{
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+        return { method: "S256", challenge: base64url(new Uint8Array(digest)) };
+      }catch(e){ /* fall through to plain below */ }
+    }
+    return { method: "plain", challenge: verifier };
+  }
+
+  async function spotifyLogin(){
+    if(!state.spotify.clientId){
+      showToast("Enter a Spotify Client ID on the Connect page first.", true);
+      return;
+    }
+    const verifier = randomVerifier();
+    await storageSet("spotify_pkce_verifier", verifier);
+    const { method, challenge } = await pkceChallenge(verifier);
+    const scope = "user-top-read user-read-recently-played user-read-currently-playing user-read-playback-state";
+    const url = new URL("https://accounts.spotify.com/authorize");
+    url.searchParams.set("client_id", state.spotify.clientId);
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("redirect_uri", spotifyRedirectUri());
+    url.searchParams.set("scope", scope);
+    url.searchParams.set("code_challenge_method", method);
+    url.searchParams.set("code_challenge", challenge);
+    window.location.href = url.toString();
+  }
+
+  async function spotifyHandleRedirect(){
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if(!code) return;
+    const verifier = await storageGet("spotify_pkce_verifier");
+    history.replaceState({}, "", window.location.pathname);
+    if(!verifier || !state.spotify.clientId) return;
+    try{
+      const body = new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: spotifyRedirectUri(),
+        client_id: state.spotify.clientId,
+        code_verifier: verifier
+      });
+      const res = await fetch("https://accounts.spotify.com/api/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error_description || "Spotify login failed");
+      state.spotifyUser.accessToken = data.access_token;
+      state.spotifyUser.refreshToken = data.refresh_token;
+      state.spotifyUser.tokenExpiry = Date.now() + (data.expires_in||3600)*1000;
+      await storageSet("spotify_user", JSON.stringify(state.spotifyUser));
+      showToast("Spotify account connected.");
+    }catch(e){
+      showToast("Spotify login failed: " + e.message, true);
+    }
+  }
+
+  async function spotifyUserToken(){
+    if(!state.spotifyUser.refreshToken) throw new Error("Not logged in with Spotify");
+    if(state.spotifyUser.accessToken && Date.now() < state.spotifyUser.tokenExpiry - 30000){
+      return state.spotifyUser.accessToken;
+    }
+    const body = new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: state.spotifyUser.refreshToken,
+      client_id: state.spotify.clientId
+    });
+    const res = await fetch("https://accounts.spotify.com/api/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error_description || "Spotify token refresh failed");
+    state.spotifyUser.accessToken = data.access_token;
+    if(data.refresh_token) state.spotifyUser.refreshToken = data.refresh_token;
+    state.spotifyUser.tokenExpiry = Date.now() + (data.expires_in||3600)*1000;
+    await storageSet("spotify_user", JSON.stringify(state.spotifyUser));
+    return state.spotifyUser.accessToken;
+  }
+
+  async function spotifyUserApi(path){
+    const token = await spotifyUserToken();
+    const res = await fetch("https://api.spotify.com/v1" + path, { headers: { "Authorization": "Bearer " + token } });
+    if(res.status === 204) return null; // e.g. nothing currently playing
+    const data = await res.json();
+    if(!res.ok) throw new Error((data.error && data.error.message) || "Spotify request failed");
+    return data;
+  }
+
+  async function spotifyLogout(){
+    state.spotifyUser = { accessToken:null, refreshToken:null, tokenExpiry:0 };
+    await storageDelete("spotify_user");
+    stopNowPlayingPolling();
+    renderSpotifyAcctBadge();
+    showToast("Logged out of Spotify.");
+  }
+
+  function renderSpotifyAcctBadge(){
+    $("#spotifyAcctBadge").innerHTML = state.spotifyUser.refreshToken
+      ? '<span class="badge-connected">LOGGED IN</span>' : "";
+  }
+
+  async function loadTopStats(){
+    if(!state.spotifyUser.refreshToken) return;
+    const range = $("#topRange").value;
+    try{
+      const [artists, tracks, recent] = await Promise.all([
+        spotifyUserApi("/me/top/artists?time_range=" + range + "&limit=10"),
+        spotifyUserApi("/me/top/tracks?time_range=" + range + "&limit=10"),
+        spotifyUserApi("/me/player/recently-played?limit=10")
+      ]);
+      renderTopArtists((artists && artists.items) || []);
+      renderTopTracks((tracks && tracks.items) || []);
+      renderRecentlyPlayed((recent && recent.items) || []);
+    }catch(e){
+      $("#spotifyAcctStatus").className = "status-msg err";
+      $("#spotifyAcctStatus").textContent = "Couldn't load your stats: " + e.message;
+    }
+  }
+
+  function renderTopArtists(items){
+    $("#topArtistsGrid").innerHTML = items.map((a,i) => {
+      const img = (a.images && a.images[a.images.length-1] && a.images[a.images.length-1].url) || FALLBACK_ART;
+      return '<div class="album-card"><div class="cover-wrap" style="--accent:' + PALETTE[i%4] + '"><img src="' + img + '" alt="" onerror="this.onerror=null;this.src=window.__vdFallback;"></div><div class="card-body"><h3 style="font-size:13px;">' + esc(a.name) + '</h3></div></div>';
+    }).join("") || '<p class="sub">No data yet.</p>';
+  }
+  function renderTopTracks(items){
+    $("#topTracksList").innerHTML = items.map(t =>
+      '<div class="diary-entry" style="padding:10px 14px;margin-bottom:8px;"><img src="' + ((t.album&&t.album.images&&t.album.images[t.album.images.length-1]&&t.album.images[t.album.images.length-1].url)||FALLBACK_ART) + '" style="width:50px;height:50px;transform:none;"><div class="content"><h3 style="font-size:14px;">' + esc(t.name) + '</h3><p class="meta" style="margin:0;">' + esc((t.artists||[]).map(a=>a.name).join(", ")) + '</p></div></div>'
+    ).join("") || '<p class="sub">No data yet.</p>';
+  }
+  function renderRecentlyPlayed(items){
+    $("#recentlyPlayedList").innerHTML = items.map(i => {
+      const t = i.track;
+      return '<div class="diary-entry" style="padding:10px 14px;margin-bottom:8px;"><img src="' + ((t.album&&t.album.images&&t.album.images[t.album.images.length-1]&&t.album.images[t.album.images.length-1].url)||FALLBACK_ART) + '" style="width:50px;height:50px;transform:none;"><div class="content"><h3 style="font-size:14px;">' + esc(t.name) + '</h3><p class="meta" style="margin:0;">' + esc((t.artists||[]).map(a=>a.name).join(", ")) + ' · ' + new Date(i.played_at).toLocaleString() + '</p></div></div>';
+    }).join("") || '<p class="sub">No data yet.</p>';
+  }
+
+  // ---- Now playing + live scrobble bridge ----
+  let nowPlayingTimer = null;
+  function stopNowPlayingPolling(){
+    if(nowPlayingTimer){ clearInterval(nowPlayingTimer); nowPlayingTimer = null; }
+    $("#nowPlayingBanner").style.display = "none";
+  }
+  function startNowPlayingPolling(){
+    if(nowPlayingTimer || !state.spotifyUser.refreshToken) return;
+    checkNowPlaying();
+    nowPlayingTimer = setInterval(checkNowPlaying, 20000);
+  }
+  function scrobbleLog(msg){
+    const el = $("#scrobbleLog");
+    if(el) el.textContent = msg;
+  }
+
+  async function checkNowPlaying(){
+    let data;
+    try{ data = await spotifyUserApi("/me/player/currently-playing"); }
+    catch(e){ return; }
+    const banner = $("#nowPlayingBanner");
+    if(!data || !data.item || !data.is_playing){
+      banner.style.display = "none";
+      return;
+    }
+    const item = data.item;
+    const artist = (item.artists||[]).map(a=>a.name).join(", ");
+    const art = (item.album && item.album.images && item.album.images[item.album.images.length-1] && item.album.images[item.album.images.length-1].url) || FALLBACK_ART;
+    banner.style.display = "block";
+    banner.innerHTML =
+      '<div class="diary-entry" style="margin-bottom:0;cursor:default;"><img src="' + art + '" style="width:56px;height:56px;transform:none;">' +
+      '<div class="content"><h3 style="font-size:14px;">\u25B6 Now playing: ' + esc(item.name) + '</h3><p class="meta" style="margin:0;">' + esc(artist) + '</p></div></div>';
+
+    if(state.nowPlaying && state.nowPlaying.id === item.id){
+      // same track — check whether it has played long enough to scrobble
+      const elapsed = Date.now() - state.nowPlaying.startedAt;
+      const threshold = Math.min(240000, item.duration_ms/2);
+      if(!state.nowPlaying.scrobbled && item.duration_ms > 30000 && elapsed >= threshold){
+        state.nowPlaying.scrobbled = true;
+        if($("#toggleAutoScrobble").checked && state.lastfmSession){
+          try{
+            await lastfmScrobble(artist, item.name, item.album && item.album.name, Math.floor(state.nowPlaying.startedAt/1000));
+            scrobbleLog("Scrobbled \"" + item.name + "\" at " + new Date().toLocaleTimeString());
+          }catch(e){ scrobbleLog("Scrobble failed: " + e.message); }
+        }
+      }
+      return;
+    }
+
+    // new track started
+    state.nowPlaying = {
+      id: item.id, name: item.name, artist, album: item.album && item.album.name,
+      durationMs: item.duration_ms, startedAt: Date.now() - (data.progress_ms||0), scrobbled: false
+    };
+    if($("#toggleAutoScrobble").checked && state.lastfmSession){
+      try{
+        await lastfmUpdateNowPlaying(artist, item.name, item.album && item.album.name);
+        scrobbleLog("Now playing updated on Last.fm: \"" + item.name + "\"");
+      }catch(e){ scrobbleLog("Couldn't update now-playing: " + e.message); }
+    }
+  }
+
+  async function spotifySearchAlbums(query, limit){
+    const data = await spotifyApi("/search?q=" + encodeURIComponent(query) + "&type=album&limit=" + (limit||10));
+    return (data.albums && data.albums.items) || [];
+  }
+
+  async function spotifyGetAlbumFull(id){
+    return await spotifyApi("/albums/" + id);
+  }
+
+  async function spotifyGetArtistGenres(id){
+    try{
+      const artist = await spotifyApi("/artists/" + id);
+      return artist.genres || [];
+    }catch(e){ return []; }
+  }
+
+  async function fetchAlbumMetadataSpotify(artist, album){
+    let items = [];
+    try{
+      items = await spotifySearchAlbums('album:"' + album + '" artist:"' + artist + '"', 5);
+    }catch(e){ /* fall through to plain query below */ }
+    if(!items.length){
+      items = await spotifySearchAlbums(artist + " " + album, 5);
+    }
+    const hit = items[0];
+    if(!hit) throw new Error("No Spotify match found");
+    const full = await spotifyGetAlbumFull(hit.id);
+    const genres = full.genres && full.genres.length ? full.genres.slice(0,4) : await spotifyGetArtistGenres((full.artists&&full.artists[0]&&full.artists[0].id)||"");
+    const tracks = (full.tracks && full.tracks.items || [])
+      .sort((a,b) => (a.track_number||0) - (b.track_number||0))
+      .map(t => ({ name: t.name, rating: null, note: "" }));
+    return {
+      artist: (full.artists && full.artists[0] && full.artists[0].name) || artist,
+      album: full.name || album,
+      year: full.release_date ? full.release_date.slice(0,4) : "",
+      genres: genres.slice(0,4),
+      art: (full.images && full.images[0] && full.images[0].url) || FALLBACK_ART,
+      tracks,
+      sourceUrl: full.external_urls && full.external_urls.spotify,
+      sourcePlatform: "Spotify"
+    };
+  }
+
   async function connectLastfm(){
     const username = $("#lfUsername").value.trim();
     const apiKey = $("#lfApiKey").value.trim();
@@ -883,7 +1511,7 @@
       statusEl.classList.add("err");
       return;
     }
-    await saveSettings(username, apiKey);
+    await saveSettings(username, apiKey, $("#lfApiSecret").value.trim());
     statusEl.textContent = "Fetching your library...";
     try{
       const top = await lastfmCall({ method:"user.gettopalbums", user:username, limit:24, period:"overall" });
@@ -931,6 +1559,15 @@
 
   // ---------------- ITUNES METADATA ----------------
   async function fetchAlbumMetadata(artist, album){
+    if(spotifyConfigured()){
+      try{
+        return await fetchAlbumMetadataSpotify(artist, album);
+      }catch(e){ /* Spotify failed or had no match — fall back to iTunes below */ }
+    }
+    return await fetchAlbumMetadataItunes(artist, album);
+  }
+
+  async function fetchAlbumMetadataItunes(artist, album){
     let art = FALLBACK_ART, year = "", genre = "", tracks = [];
     try{
       const searchUrl = "https://itunes.apple.com/search?term=" + encodeURIComponent(artist + " " + album) + "&entity=album&limit=1";
@@ -1016,7 +1653,20 @@
   }
 
   function categoryFor(hit){
+    if(hit._albumType) return hit._albumType === "single" ? "Single/EP" : "Album";
     return (hit.trackCount && hit.trackCount <= 3) ? "Single/EP" : "Album";
+  }
+
+  function spotifyHitAdapter(item){
+    return {
+      collectionId: "sp_" + item.id,
+      collectionName: item.name,
+      artistName: (item.artists && item.artists[0] && item.artists[0].name) || "",
+      artworkUrl100: (item.images && item.images[0] && item.images[0].url) || "",
+      releaseDate: item.release_date || "",
+      trackCount: item.total_tracks || 0,
+      _albumType: item.album_type || ""
+    };
   }
 
   async function itunesAlbumSearch(term, attribute){
@@ -1111,7 +1761,7 @@
     openModal(albumObj);
   }
 
-  async function addAlbumFlow(artist, album){
+  async function addAlbumFlow(artist, album, suggestedScore){
     showToast("Fetching metadata for " + album + "...");
     const meta = await fetchAlbumMetadata(artist, album);
     const id = slugify(meta.artist, meta.album);
@@ -1119,7 +1769,10 @@
     const albumObj = existing || {
       id, artist: meta.artist, album: meta.album, year: meta.year,
       genres: meta.genres, imageUrl: meta.art, tracks: meta.tracks,
-      diaryText: "", mood: "", manualScore: "", dateAdded: new Date().toISOString(), dateUpdated: new Date().toISOString()
+      sourceUrl: meta.sourceUrl || "", sourcePlatform: meta.sourcePlatform || "",
+      diaryText: "", mood: "",
+      manualScore: (suggestedScore != null ? suggestedScore.toFixed(1) : ""),
+      dateAdded: new Date().toISOString(), dateUpdated: new Date().toISOString()
     };
     openModal(albumObj);
   }
@@ -1133,21 +1786,37 @@
 
     const parsed = parseSearchQuery(q);
     let pool = [];
-    try{
-      if(parsed.album && parsed.artist){
-        // Targeted lookups first: search the album-name field and the
-        // artist-name field directly, which pins down the right record even
-        // when the combined free-text query would get buried in noise.
-        const [byAlbum, byArtist] = await Promise.all([
-          itunesAlbumSearch(parsed.album, "albumTerm"),
-          itunesAlbumSearch(parsed.artist, "artistTerm")
-        ]);
-        pool = byAlbum.concat(byArtist);
-      }
-      if(!pool.length){
-        pool = await itunesAlbumSearch(q);
-      }
-    }catch(e){ pool = []; }
+
+    if(spotifyConfigured()){
+      try{
+        let spotifyResults = [];
+        if(parsed.album && parsed.artist){
+          spotifyResults = await spotifySearchAlbums('album:"' + parsed.album + '" artist:"' + parsed.artist + '"', 20);
+        }
+        if(!spotifyResults.length){
+          spotifyResults = await spotifySearchAlbums(q, 20);
+        }
+        pool = spotifyResults.map(spotifyHitAdapter);
+      }catch(e){ pool = []; /* fall through to iTunes below */ }
+    }
+
+    if(!pool.length){
+      try{
+        if(parsed.album && parsed.artist){
+          // Targeted lookups first: search the album-name field and the
+          // artist-name field directly, which pins down the right record even
+          // when the combined free-text query would get buried in noise.
+          const [byAlbum, byArtist] = await Promise.all([
+            itunesAlbumSearch(parsed.album, "albumTerm"),
+            itunesAlbumSearch(parsed.artist, "artistTerm")
+          ]);
+          pool = byAlbum.concat(byArtist);
+        }
+        if(!pool.length){
+          pool = await itunesAlbumSearch(q);
+        }
+      }catch(e){ pool = []; }
+    }
 
     // dedupe by collectionId, then rank by how well each result matches
     const seen = new Set();
@@ -1486,27 +2155,37 @@
     el.style.display = "block";
   }
 
+  // Standardizes any external rating onto the app's own 0-10 scale, so
+  // AOTY (0-100), RYM (0-5), and personal ratings are all comparable.
+  function standardizeToTen(item){
+    if(item.score != null) return item.score / 10;      // AOTY: 0-100
+    if(item.rating != null) return item.rating * 2;       // RYM: 0-5
+    return null;
+  }
+
   async function showCanonResult(item, list){
     const el = $("#rouletteResult");
-    const badgeValue = item.score != null ? item.score : (item.rating != null ? item.rating.toFixed(2) : "—");
+    const std = standardizeToTen(item);
+    const originalLabel = item.score != null ? (item.score + "/100 " + list.label)
+      : (item.rating != null ? (item.rating.toFixed(2) + "/5 " + list.label) : list.label);
     el.innerHTML =
       '<div class="cover-wrap" style="--accent:var(--cyan)"><img src="' + FALLBACK_ART + '" alt="" class="canon-art"></div>' +
       '<div class="card-body">' +
-        '<div class="score-badge">' + esc(badgeValue) + '</div>' +
+        '<div class="score-badge">' + (std!=null ? std.toFixed(1) : "—") + '</div>' +
         '<h3>' + esc(item.title) + '</h3><p class="artist">' + esc(item.artist) + '</p>' +
         '<div class="meta-row">' +
           (item.year?'<span class="chip">'+esc(item.year)+'</span>':"") +
           (item.type && item.type.toLowerCase()!=="album" ? '<span class="chip">'+esc(item.type)+'</span>' : "") +
           (item.genres||[]).slice(0,2).map(g=>'<span class="chip">'+esc(g)+'</span>').join("") +
-          '<span class="chip">' + esc(list.label) + '</span>' +
+          '<span class="chip">' + esc(originalLabel) + '</span>' +
         '</div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">' +
-          '<button class="btn pink small add-btn">+ Add to my diary</button>' +
+          '<button class="btn pink small add-btn">+ Add to my diary (' + (std!=null?std.toFixed(1)+'/10 suggested':'no suggested score') + ')</button>' +
           (item.url ? '<a class="btn ghost small" href="' + esc(item.url) + '" target="_blank" rel="noopener">View source</a>' : "") +
         '</div>' +
         streamingLinksHtml(item.artist, item.title) +
       '</div>';
-    el.querySelector(".add-btn").addEventListener("click", () => addAlbumFlow(item.artist, item.title));
+    el.querySelector(".add-btn").addEventListener("click", () => addAlbumFlow(item.artist, item.title, std));
     el.style.display = "block";
     // best-effort artwork preview, swapped in once found — never blocks the reveal
     try{
@@ -1677,6 +2356,12 @@
           renderStats();
           buildWarholWall();
         }
+        if(tab.dataset.page === "live"){
+          loadTopStats();
+          startNowPlayingPolling();
+        }else{
+          stopNowPlayingPolling();
+        }
       });
     });
   }
@@ -1687,12 +2372,27 @@
     $("#btnDownloadWall").addEventListener("click", downloadWall);
     $("#wallCount").addEventListener("change", buildWarholWall);
     $("#btnSpin").addEventListener("click", spinRoulette);
+    $("#btnSpotifyLogin").addEventListener("click", spotifyLogin);
+    $("#btnSpotifyLogout").addEventListener("click", spotifyLogout);
+    $("#topRange").addEventListener("change", loadTopStats);
+    $("#btnLastfmAuthStart").addEventListener("click", startLastfmAuth);
+    $("#btnLastfmAuthFinish").addEventListener("click", finishLastfmAuth);
+    $("#btnLastfmScrobbleForget").addEventListener("click", forgetScrobbling);
     $("#btnForget").addEventListener("click", async () => {
       await storageDelete("settings");
-      state.settings = { username:"", apiKey:"" };
-      $("#lfUsername").value = ""; $("#lfApiKey").value = "";
+      state.settings = { username:"", apiKey:"", apiSecret:"" };
+      $("#lfUsername").value = ""; $("#lfApiKey").value = ""; $("#lfApiSecret").value = "";
       updateConnectedBadge();
       showToast("Credentials forgotten.");
+    });
+    $("#btnSpotifyConnect").addEventListener("click", connectSpotify);
+    $("#btnSpotifyForget").addEventListener("click", async () => {
+      await storageDelete("spotify");
+      state.spotify = { clientId:"", clientSecret:"", accessToken:null, tokenExpiry:0 };
+      $("#spotifyClientId").value = ""; $("#spotifyClientSecret").value = "";
+      $("#spotifyStatus").textContent = "";
+      updateSpotifyBadge();
+      showToast("Spotify credentials forgotten.");
     });
     $("#btnManualSearch").addEventListener("click", manualSearch);
     $("#manualQuery").addEventListener("keydown", e => { if(e.key === "Enter") manualSearch(); });
@@ -1752,11 +2452,20 @@
     setupEvents();
     await loadCustomization();
     await loadSettings();
+    await loadSpotifySettings();
+    await loadLastfmSession();
+    await loadSpotifyUser();
+    $("#spotifyRedirectDisplay").value = spotifyRedirectUri();
     await loadAllAlbums();
     renderAll();
     if(state.settings.username && state.settings.apiKey){
       connectLastfm();
     }
+    if(spotifyConfigured()){
+      spotifyGetToken().then(updateSpotifyBadge).catch(() => {});
+    }
+    await spotifyHandleRedirect();
+    renderSpotifyAcctBadge();
   }
 
   document.addEventListener("DOMContentLoaded", init);
